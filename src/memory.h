@@ -3,10 +3,7 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
-#include <stddef.h>
-
 #define MEMORY_SIZE 0x4000
-extern unsigned char memory[MEMORY_SIZE];
 
 // Memory segmentation
 #define ROM_BANK_0_START 0x0000
@@ -38,5 +35,6 @@ extern unsigned char memory[MEMORY_SIZE];
 
 unsigned char read_byte(unsigned short address);
 void write_byte(unsigned short address, unsigned char value);
+void init_memory();
 
 #endif

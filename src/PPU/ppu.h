@@ -3,7 +3,7 @@
 #ifndef PPU_H
 #define PPU_H
 
-#include "memory.h"
+#include "../memory.h"
 #include "tigr.h"
 
 // Screen dimensions
@@ -12,6 +12,6 @@
 
 void tick(unsigned char cycles);
 unsigned char get_mode();
-void ppu_init();
+void init_ppu();
 
 #endif
