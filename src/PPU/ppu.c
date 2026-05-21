@@ -21,9 +21,9 @@ struct OAMEntry {
 struct OAMEntry oam_buffer[10];     // Buffer for OAM search results (up to 10 sprites per line)
 static unsigned char oam_index = 0; // Index for OAM search results
 
-static Tigr *screen;                       // Pointer to the Tigr screen
-static unsigned char mode;                 // Current PPU mode (0-3)
-static unsigned short scanline_tcycle = 0; // Counts ttcycles for timing
+static Tigr *screen;                    // Pointer to the Tigr screen
+static unsigned char mode;              // Current PPU mode (0-3)
+static unsigned short scanline_dot = 0; // Counts dots for timing
 
 static TPixel get_color_from_palette(unsigned char palette, unsigned char color_id) {
     // Each color is represented by 2 bits in the palette
@@ -43,38 +43,38 @@ static TPixel get_color_from_palette(unsigned char palette, unsigned char color_
 }
 
 static short mode3_penalty = 0;
-void tick(unsigned char tcycles) {
-    unsigned char lcdc = read_byte(LCDC_ADDRESS);
+void tick(unsigned char dots) {
+    unsigned char lcdc = mem_read(LCDC_ADDRESS);
     unsigned lcdc_enabled = lcdc & 0x80;
     if (!lcdc_enabled) {
         mode = 2; // Reset PPU while off
-        scanline_tcycle = 0;
+        scanline_dot = 0;
         return;
     }
-    if (scanline_tcycle == 0) {
+    if (scanline_dot == 0) {
         oam_index = 0; // Reset OAM index at the start of each scanline
     }
-    // tcycle counting per CPU instruction
+    // Dot counting per CPU instruction
     switch (mode) {
     case 0: // HBlank
     {
-        scanline_tcycle += tcycles;
-        if (scanline_tcycle >= 456) // Each scanline takes 456 tcycles
+        scanline_dot += dots;
+        if (scanline_dot >= 456) // Each scanline takes 456 dots
         {
-            unsigned short diff = scanline_tcycle - 456;
-            scanline_tcycle = 0;
+            unsigned short diff = scanline_dot - 456;
+            scanline_dot = 0;
 
             // Increment LY and check for LYC match
-            unsigned char ly = read_byte(LY_ADDRESS);
+            unsigned char ly = mem_read(LY_ADDRESS);
             ly = (ly + 1) % 154; // LY goes from 0 to 153
-            write_byte(LY_ADDRESS, ly);
+            mem_write(LY_ADDRESS, ly);
 
             if (ly == 144)
                 mode = 1; // Enter VBlank after the last visible line
             else
                 mode = 2; // Start OAM Search for the next line
 
-            tick(diff); // Process remaining tcycles
+            tick(diff); // Process remaining dots
         }
         break;
     }
@@ -82,38 +82,38 @@ void tick(unsigned char tcycles) {
             // ***do interrupt things later***!!
     {
 
-        scanline_tcycle += tcycles;
-        if (scanline_tcycle >= 456) // Each scanline takes 456 tcycles
+        scanline_dot += dots;
+        if (scanline_dot >= 456) // Each scanline takes 456 dots
         {
-            unsigned short diff = scanline_tcycle - 456;
-            scanline_tcycle = 0;
+            unsigned short diff = scanline_dot - 456;
+            scanline_dot = 0;
 
             // Increment LY and check for LYC match
-            unsigned char ly = read_byte(LY_ADDRESS);
+            unsigned char ly = mem_read(LY_ADDRESS);
             ly = (ly + 1) % 154; // LY goes from 0 to 153
-            write_byte(LY_ADDRESS, ly);
+            mem_write(LY_ADDRESS, ly);
 
             if (ly == 0)
                 mode = 2; // Start OAM Search for the next frame
 
-            tick(diff); // Process remaining tcycles
+            tick(diff); // Process remaining dots
         }
         break;
     }
     case 2: // OAM Search
     {
         unsigned char obj_size = lcdc & 0x04;
-        unsigned char entries_to_read = tcycles / 2;
-        if (tcycles % 2 != 0)
-            printf("OAM Search received odd tcycle count: %d\n", tcycles);
+        unsigned char entries_to_read = dots / 2;
+        if (dots % 2 != 0)
+            printf("OAM Search received odd dot count: %d\n", dots);
 
-        unsigned char ly = read_byte(LY_ADDRESS);
+        unsigned char ly = mem_read(LY_ADDRESS);
         for (int i = 0; i < entries_to_read && oam_index < 10; i++) {
             // Perform OAM search logic here
-            unsigned char y_pos = read_byte(0xFE00 + oam_index * 4);
-            unsigned char x_pos = read_byte(0xFE00 + oam_index * 4 + 1);
-            unsigned char tile_index = read_byte(0xFE00 + oam_index * 4 + 2);
-            unsigned char attributes = read_byte(0xFE00 + oam_index * 4 + 3);
+            unsigned char y_pos = mem_read(0xFE00 + oam_index * 4);
+            unsigned char x_pos = mem_read(0xFE00 + oam_index * 4 + 1);
+            unsigned char tile_index = mem_read(0xFE00 + oam_index * 4 + 2);
+            unsigned char attributes = mem_read(0xFE00 + oam_index * 4 + 3);
 
             unsigned char sprite_y = y_pos - 16;
             unsigned char sprite_height = obj_size ? 16 : 8;
@@ -129,13 +129,13 @@ void tick(unsigned char tcycles) {
             }
         }
 
-        scanline_tcycle += tcycles;
-        if (scanline_tcycle >= 80) // OAM Search takes 80 tcycles
+        scanline_dot += dots;
+        if (scanline_dot >= 80) // OAM Search takes 80 dots
         {
-            unsigned short diff = scanline_tcycle - 80;
-            scanline_tcycle -= diff;
+            unsigned short diff = scanline_dot - 80;
+            scanline_dot -= diff;
             mode = 3;   // Enter Pixel Transfer
-            tick(diff); // Process remaining tcycles
+            tick(diff); // Process remaining dots
         }
         break;
     }
@@ -146,12 +146,12 @@ void tick(unsigned char tcycles) {
                       bg_tile_map_select = lcdc & 0x08, obj_enabled = lcdc & 0x02,
                       bg_and_window_enabled = lcdc & 0x01;
 
-        // Window Rendering
-        if (bg_and_window_enabled && window_enabled) {
-        }
-
-        // Background Rendering
         if (bg_and_window_enabled) {
+            // Window Rendering
+            if (window_enabled) {
+            }
+
+            // Background Rendering
         }
 
         // Sprite Rendering
@@ -167,8 +167,9 @@ unsigned char get_mode() { return mode; }
 
 void init_ppu() {
     screen = tigrWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Gameboy Emulator", 0);
-    mode = 2; // Start in mode 2 (OAM Search)
 
+    // Initialize PPU boot settings
+    mode = 2;
     oam_index = 0;
-    scanline_tcycle = 0;
+    scanline_dot = 0;
 }

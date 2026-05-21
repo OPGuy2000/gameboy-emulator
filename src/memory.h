@@ -3,6 +3,10 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #define MEMORY_SIZE 0x4000
 
 // Memory segmentation
@@ -33,8 +37,8 @@
 #define HIGH_RAM_START 0xFF80
 #define HIGH_RAM_END 0xFFFE
 
-unsigned char read_byte(unsigned short address);
-void write_byte(unsigned short address, unsigned char value);
-void init_memory();
+unsigned char mem_read(unsigned short address);
+void mem_write(unsigned short address, unsigned char value);
+void init_memory(FILE *gameROM);
 
 #endif
