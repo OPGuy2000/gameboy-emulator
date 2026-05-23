@@ -10,8 +10,8 @@
 #define SCREEN_WIDTH 160
 #define SCREEN_HEIGHT 144
 
-void tick(unsigned char cycles);
-unsigned char get_mode();
-int init_ppu();
+void tick(uint8_t cycles);
+uint8_t get_mode();
+void init_ppu();
 
 #endif

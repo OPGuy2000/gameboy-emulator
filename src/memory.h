@@ -4,6 +4,7 @@
 #define MEMORY_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,21 +39,26 @@
 #define HIGH_RAM_START 0xFF80
 #define HIGH_RAM_END 0xFFFE
 
-union MBC {
+union MBCData {
     struct MBC1_State {
-        unsigned char rom_bank;
-        unsigned char upper_bits;
-        unsigned char ram_bank;
-        unsigned char banking_mode;
+        uint8_t rom_bank;
+        uint8_t ram_bank;
+        uint8_t banking_mode;
         bool ram_enabled;
     } MBC1;
 };
+struct MBC {
+    uint8_t mbc_type;
+    union MBCData mbc_data;
+};
 
-unsigned char mem_read(unsigned short address);
-void mem_write(unsigned short address, unsigned char value);
-void mbc_write(unsigned short address, unsigned char value);
-int init_memory(FILE *romfp);
+uint8_t mem_read(uint16_t address);
+void mem_write(uint16_t address, uint8_t value);
+uint8_t mbc_read(uint16_t address);
+void mbc_write(uint16_t address, uint8_t value);
 
-unsigned char get_mbc();
+void init_memory(FILE *romfp);
+
+struct MBC get_mbc();
 
 #endif
