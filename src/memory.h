@@ -3,6 +3,7 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,8 +38,21 @@
 #define HIGH_RAM_START 0xFF80
 #define HIGH_RAM_END 0xFFFE
 
+union MBC {
+    struct MBC1_State {
+        unsigned char rom_bank;
+        unsigned char upper_bits;
+        unsigned char ram_bank;
+        unsigned char banking_mode;
+        bool ram_enabled;
+    } MBC1;
+};
+
 unsigned char mem_read(unsigned short address);
 void mem_write(unsigned short address, unsigned char value);
-void init_memory(FILE *gameROM);
+void mbc_write(unsigned short address, unsigned char value);
+int init_memory(FILE *romfp);
+
+unsigned char get_mbc();
 
 #endif

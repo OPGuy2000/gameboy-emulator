@@ -4,7 +4,7 @@
 #define PPU_H
 
 #include "../memory.h"
-#include "tigr.h"
+#include <SDL2/SDL.h>
 
 // Screen dimensions
 #define SCREEN_WIDTH 160
@@ -12,6 +12,6 @@
 
 void tick(unsigned char cycles);
 unsigned char get_mode();
-void init_ppu();
+int init_ppu();
 
 #endif

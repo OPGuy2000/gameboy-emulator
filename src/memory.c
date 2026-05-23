@@ -3,6 +3,9 @@
 static unsigned char *memory;
 static unsigned char *rom;
 
+static unsigned char mbc;
+static union MBC mbcData;
+
 unsigned char mem_read(unsigned short address) {
     if (address < MEMORY_SIZE) {
         return memory[address];
@@ -11,16 +14,40 @@ unsigned char mem_read(unsigned short address) {
 }
 
 void mem_write(unsigned short address, unsigned char value) {
-    if (address < MEMORY_SIZE) {
+    if (address >= 0x0000 && address <= 0x7FFF) {
+        mbc_write(address, value);
+    } else {
         memory[address] = value;
     }
 }
 
-void init_memory(FILE *romfp) {
+void mbc_write(unsigned short address, unsigned char value) {
+    switch (mbc) {
+    // No MBC
+    case 0x00: {
+        return;
+    }
+    // MBC1
+    case 0x01:
+    case 0x02:
+    case 0x03: {
+        if (address >= 0x0000 && address <= 0x1FFF) {
+            if (value == 0x0A) {
+                mbcData.MBC1.ram_enabled = true;
+            } else {
+                mbcData.MBC1.ram_enabled = false;
+            }
+        }
+        break;
+    }
+    }
+}
+
+int init_memory(FILE *romfp) {
     // Initialize memory and ROM
     if (romfp == NULL) {
         printf("ERROR: Game ROM could not be opened.");
-        return;
+        return 1;
     }
     fseek(romfp, 0, SEEK_END);
     long romSize = ftell(romfp);
@@ -37,7 +64,16 @@ void init_memory(FILE *romfp) {
     memcpy(memory, rom, bankSize);
     memcpy(memory + ROM_BANK_N_START, rom + ROM_BANK_N_START, bankSize);
 
-    unsigned char mbcType = mem_read(0x0147);
+    // Initialize MBC
+    mbc = mem_read(0x0147);
+    switch (mbc) {
+    case 0x01:
+    case 0x02:
+    case 0x03: {
+        mbcData.MBC1 = (struct MBC1_State){
+            .rom_bank = 0, .upper_bits = 0, .ram_bank = 0, .banking_mode = 0, .ram_enabled = false};
+    }; break;
+    }
     unsigned char ramSize = mem_read(0x0149);
 
     // Initialize Boot Memory
@@ -83,4 +119,6 @@ void init_memory(FILE *romfp) {
     mem_write(0xFF4A, 0x00); // WY
     mem_write(0xFF4B, 0x00); // WX
     mem_write(0xFFFF, 0x00); // IE
+
+    return 0;
 }

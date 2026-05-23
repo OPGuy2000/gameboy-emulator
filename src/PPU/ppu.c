@@ -1,4 +1,7 @@
 #include "ppu.h"
+#include <SDL2/SDL_pixels.h>
+#include <SDL2/SDL_render.h>
+#include <SDL2/SDL_video.h>
 #include <stdio.h>
 
 // Define addresses for PPU needed I/O registers
@@ -21,24 +24,25 @@ struct OAMEntry {
 struct OAMEntry oam_buffer[10];     // Buffer for OAM search results (up to 10 sprites per line)
 static unsigned char oam_index = 0; // Index for OAM search results
 
-static Tigr *screen;                    // Pointer to the Tigr screen
+static SDL_Window *window;              // Pointer to the SDL window
+static SDL_Renderer *renderer;          // Pointer to SDL renderer
 static unsigned char mode;              // Current PPU mode (0-3)
 static unsigned short scanline_dot = 0; // Counts dots for timing
 
-static TPixel get_color_from_palette(unsigned char palette, unsigned char color_id) {
+static SDL_Color get_color_from_palette(unsigned char palette, unsigned char color_id) {
     // Each color is represented by 2 bits in the palette
     unsigned char color_bits = (palette >> (color_id * 2)) & 0x03;
     switch (color_bits) {
     case 0:
-        return tigrRGB(0xFF, 0xFF, 0xFF); // White
+        return (struct SDL_Color){0xFF, 0xFF, 0xFF, 0xFF}; // White
     case 1:
-        return tigrRGB(0xAA, 0xAA, 0xAA); // Light Gray
+        return (struct SDL_Color){0xAA, 0xAA, 0xAA, 0xFF}; // Light_Gray
     case 2:
-        return tigrRGB(0x55, 0x55, 0x55); // Dark Gray
+        return (struct SDL_Color){0x55, 0x55, 0x55, 0xFF}; // Dark_Gray
     case 3:
-        return tigrRGB(0x00, 0x00, 0x00); // Black
+        return (struct SDL_Color){0x00, 0x00, 0x00, 0xFF}; // Black
     default:
-        return tigrRGB(0xFF, 0xFF, 0xFF); // Default to white
+        return (struct SDL_Color){0xFF, 0xFF, 0xFF, 0xFF}; // Default white
     }
 }
 
@@ -165,11 +169,35 @@ void tick(unsigned char dots) {
 
 unsigned char get_mode() { return mode; }
 
-void init_ppu() {
-    screen = tigrWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Gameboy Emulator", 0);
+int init_ppu() {
+    // Initialize SDL
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        printf("SDL Init Error: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    // Create window
+    window = SDL_CreateWindow("SDL2 Pixel Example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                              SCREEN_WIDTH, SCREEN_HEIGHT, 0);
+    if (!window) {
+        printf("Window Error: %s\n", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+
+    // Create renderer
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (!renderer) {
+        printf("Renderer Error: %s\n", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
 
     // Initialize PPU boot settings
     mode = 2;
     oam_index = 0;
     scanline_dot = 0;
+
+    return 0;
 }
