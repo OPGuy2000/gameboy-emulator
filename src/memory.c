@@ -1,14 +1,13 @@
 #include "memory.h"
-#include <stdint.h>
 
 static uint8_t *memory;
-static uint8_t *rom;
-
-static struct MBC mbc;
-uint16_t num_banks;
-uint8_t num_ram_banks;
 
 uint8_t mem_read(uint16_t address) {
+    // Echo RAM redirection
+    if (address >= 0xE000 && address <= 0xFDFF) {
+        address -= 0x2000;
+    }
+
     if (address < MEMORY_SIZE) {
         return memory[address];
     }
@@ -16,76 +15,16 @@ uint8_t mem_read(uint16_t address) {
 }
 
 void mem_write(uint16_t address, uint8_t value) {
-    if (address >= 0x0000 && address <= 0x7FFF) {
-        mbc_write(address, value);
-    } else {
-        memory[address] = value;
+    // Echo RAM redirection
+    if (address >= 0xE000 && address <= 0xFDFF) {
+        address -= 0x2000;
     }
+
+    memory[address] = value;
 }
 
-void mbc_write(uint16_t address, uint8_t value) {
-    union MBCData *mbcData = &mbc.mbc_data;
-    switch (mbc.mbc_type) {
-    // No MBC
-    case 0x00: {
-        return;
-    }
-    // MBC1
-    case 0x01:
-    case 0x02:
-    case 0x03: {
-        struct MBC1_State *mbc1 = &mbcData->MBC1;
-        if (address >= 0x0000 && address <= 0x1FFF) {
-            mbc1->ram_enabled = (value & 0x0F) == 0x0A;
-        } else if (address >= 0x2000 && address <= 0x3FFF) {
-            value = ((value & 0x1F) == 0x00) ? 0x01 : value;
-
-            if (num_banks > 0x1F) {
-                mbc1->rom_bank |= (mbc1->ram_bank << 5);
-            }
-            mbc1->rom_bank = value & (num_banks - 1);
-        } else if (address >= 0x4000 && address <= 0x5FFF) {
-            if (num_ram_banks == 4) {
-            }
-        }
-        break;
-    }
-    }
-}
-
-void init_memory(FILE *romfp) {
-    // Initialize memory and ROM
-    if (romfp == NULL) {
-        printf("ERROR: Game ROM could not be opened.");
-        return;
-    }
-    fseek(romfp, 0, SEEK_END);
-    long romSize = ftell(romfp);
-    num_banks = romSize / 0x4000;
-    rewind(romfp);
-
-    memory = malloc(MEMORY_SIZE);
-    rom = malloc(romSize);
-
-    fread(rom, 1, romSize, romfp);
-    fclose(romfp);
-
-    // Copy over Bank 0 and 1 to memory
-    uint16_t bankSize = ROM_BANK_0_END - ROM_BANK_0_START + 1;
-    memcpy(memory, rom, bankSize);
-    memcpy(memory + ROM_BANK_N_START, rom + ROM_BANK_N_START, bankSize);
-
-    // Initialize MBC
-    mbc.mbc_type = mem_read(0x0147);
-    switch (mbc.mbc_type) {
-    case 0x01:
-    case 0x02:
-    case 0x03: {
-        mbc.mbc_data.MBC1 = (struct MBC1_State){
-            .rom_bank = 0, .upper_bits = 0, .ram_bank = 0, .banking_mode = 0, .ram_enabled = false};
-    }; break;
-    }
-    uint8_t ramSize = mem_read(0x0149);
+void init_memory() {
+    memory = calloc(0, MEMORY_SIZE);
 
     // Initialize Boot Memory
     mem_write(0xFF00, 0xCF); // P1/JOYP
@@ -131,5 +70,3 @@ void init_memory(FILE *romfp) {
     mem_write(0xFF4B, 0x00); // WX
     mem_write(0xFFFF, 0x00); // IE
 }
-
-struct MBC get_mbc() { return mbc; }

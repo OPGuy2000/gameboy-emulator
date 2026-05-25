@@ -1,9 +1,5 @@
 #pragma once
 
-#ifndef MEMORY_H
-#define MEMORY_H
-
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,26 +35,6 @@
 #define HIGH_RAM_START 0xFF80
 #define HIGH_RAM_END 0xFFFE
 
-union MBCData {
-    struct MBC1_State {
-        uint8_t rom_bank;
-        uint8_t ram_bank;
-        uint8_t banking_mode;
-        bool ram_enabled;
-    } MBC1;
-};
-struct MBC {
-    uint8_t mbc_type;
-    union MBCData mbc_data;
-};
-
 uint8_t mem_read(uint16_t address);
 void mem_write(uint16_t address, uint8_t value);
-uint8_t mbc_read(uint16_t address);
-void mbc_write(uint16_t address, uint8_t value);
-
-void init_memory(FILE *romfp);
-
-struct MBC get_mbc();
-
-#endif
+void init_memory();
