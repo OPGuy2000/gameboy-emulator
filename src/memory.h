@@ -37,4 +37,4 @@
 
 uint8_t mem_read(uint16_t address);
 void mem_write(uint16_t address, uint8_t value);
-void init_memory();
+void mem_init();

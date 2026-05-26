@@ -1,8 +1,4 @@
 #include "ppu.h"
-#include <SDL2/SDL_pixels.h>
-#include <SDL2/SDL_render.h>
-#include <SDL2/SDL_video.h>
-#include <stdio.h>
 
 // Define addresses for PPU needed I/O registers
 const uint16_t LCDC_ADDRESS = 0xFF40,             // LCD Control Register
@@ -24,10 +20,14 @@ struct OAMEntry {
 struct OAMEntry oam_buffer[10]; // Buffer for OAM search results (up to 10 sprites per line)
 static uint8_t oam_index = 0;   // Index for OAM search results
 
-static SDL_Window *window;        // Pointer to the SDL window
-static SDL_Renderer *renderer;    // Pointer to SDL renderer
+static SDL_Window *window;     // Pointer to the SDL window
+static SDL_Renderer *renderer; // Pointer to SDL renderer
+static SDL_Texture *texture;
 static uint8_t mode;              // Current PPU mode (0-3)
 static uint16_t scanline_dot = 0; // Counts dots for timing
+
+static uint8_t (*mem_read)(uint16_t);
+static void (*mem_write)(uint16_t, uint8_t);
 
 static SDL_Color get_color_from_palette(uint8_t palette, uint8_t color_id) {
     // Each color is represented by 2 bits in the palette
@@ -46,7 +46,46 @@ static SDL_Color get_color_from_palette(uint8_t palette, uint8_t color_id) {
     }
 }
 
-static short mode3_penalty = 0;
+static uint8_t increment_ly() {
+    // Increment LY and check for LYC match
+    uint8_t stat = mem_read(STAT_ADDRESS);
+    uint8_t ly = mem_read(LY_ADDRESS);
+    uint8_t lyc = mem_read(LYC_ADDRESS);
+
+    ly = (ly + 1) % 154; // LY goes from 0 to 153
+    mem_write(LY_ADDRESS, ly);
+
+    if (ly == lyc)
+        stat |= 0x04;
+    else
+        stat &= 0xFB;
+    mem_write(STAT_ADDRESS, stat);
+
+    if (stat & 0x40 && stat & 0x04) {
+    } // Request interrupt later
+
+    return ly;
+}
+
+static void set_mode(uint8_t new_mode) {
+    mode = new_mode;
+    uint8_t stat = mem_read(STAT_ADDRESS);
+
+    stat = (stat & 0xFC) | mode;
+    mem_write(STAT_ADDRESS, stat);
+
+    int fire = 0;
+    if (new_mode == 0 && (stat & 0x08))
+        fire = 1;
+    if (new_mode == 1 && (stat & 0x10))
+        fire = 1;
+    if (new_mode == 2 && (stat & 0x20))
+        fire = 1;
+
+    if (fire) { // Request Interrupt later
+    }
+}
+
 void tick(uint8_t dots) {
     uint8_t lcdc = mem_read(LCDC_ADDRESS);
     unsigned lcdc_enabled = lcdc & 0x80;
@@ -68,37 +107,27 @@ void tick(uint8_t dots) {
             uint16_t diff = scanline_dot - 456;
             scanline_dot = 0;
 
-            // Increment LY and check for LYC match
-            uint8_t ly = mem_read(LY_ADDRESS);
-            ly = (ly + 1) % 154; // LY goes from 0 to 153
-            mem_write(LY_ADDRESS, ly);
-
+            uint8_t ly = increment_ly();
             if (ly == 144)
-                mode = 1; // Enter VBlank after the last visible line
+                set_mode(1); // Enter VBlank after the last visible line
             else
-                mode = 2; // Start OAM Search for the next line
+                set_mode(2); // Start OAM Search for the next line
 
             tick(diff); // Process remaining dots
         }
         break;
     }
     case 1: // VBlank
-            // ***do interrupt things later***!!
     {
-
         scanline_dot += dots;
         if (scanline_dot >= 456) // Each scanline takes 456 dots
         {
             uint16_t diff = scanline_dot - 456;
             scanline_dot = 0;
 
-            // Increment LY and check for LYC match
-            uint8_t ly = mem_read(LY_ADDRESS);
-            ly = (ly + 1) % 154; // LY goes from 0 to 153
-            mem_write(LY_ADDRESS, ly);
-
+            uint8_t ly = increment_ly();
             if (ly == 0)
-                mode = 2; // Start OAM Search for the next frame
+                set_mode(2); // Start OAM Search for the next frame
 
             tick(diff); // Process remaining dots
         }
@@ -138,29 +167,36 @@ void tick(uint8_t dots) {
         {
             uint16_t diff = scanline_dot - 80;
             scanline_dot -= diff;
-            mode = 3;   // Enter Pixel Transfer
-            tick(diff); // Process remaining dots
+            set_mode(3); // Enter Pixel Transfer
+            tick(diff);  // Process remaining dots
         }
         break;
     }
     case 3: // Pixel Transfer
     {
-        uint8_t window_tile_map_select = lcdc & 0x40, window_enabled = lcdc & 0x20,
-                bg_and_window_tile_data_select = lcdc & 0x10, bg_tile_map_select = lcdc & 0x08,
-                obj_enabled = lcdc & 0x02, bg_and_window_enabled = lcdc & 0x01;
+        scanline_dot += dots;
+        if (scanline_dot >= 80 + 172) {
+            uint8_t window_tile_map_select = lcdc & 0x40, window_enabled = lcdc & 0x20,
+                    bg_and_window_tile_data_select = lcdc & 0x10, bg_tile_map_select = lcdc & 0x08,
+                    obj_enabled = lcdc & 0x02, bg_and_window_enabled = lcdc & 0x01;
 
-        if (bg_and_window_enabled) {
-            // Window Rendering
-            if (window_enabled) {
+            if (bg_and_window_enabled) {
+                // Window Rendering
+                if (window_enabled) {
+                }
+
+                // Background Rendering
             }
 
-            // Background Rendering
-        }
+            // Sprite Rendering
+            if (obj_enabled) {
+            }
 
-        // Sprite Rendering
-        if (obj_enabled) {
+            uint16_t diff = scanline_dot - (80 + 172);
+            scanline_dot -= diff;
+            set_mode(0);
+            tick(diff);
         }
-
         break;
     }
     }
@@ -168,7 +204,11 @@ void tick(uint8_t dots) {
 
 uint8_t get_mode() { return mode; }
 
-void init_ppu() {
+void ppu_init(uint8_t (*mem_read_fp)(uint16_t), void (*mem_write_fp)(uint16_t, uint8_t)) {
+    // Set read/write function pointers (direct access to VRAM)
+    mem_read = mem_read_fp;
+    mem_write = mem_write_fp;
+
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         printf("SDL Init Error: %s\n", SDL_GetError());
@@ -192,9 +232,19 @@ void init_ppu() {
         SDL_Quit();
         return;
     }
+    // Create texture at native GB resolution
+    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING,
+                                160, 144);
+    if (!texture) {
+        printf("Texture Error: %s\n", SDL_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return;
+    }
 
     // Initialize PPU boot settings
-    mode = 2;
+    mode = 1;
     oam_index = 0;
     scanline_dot = 0;
 }

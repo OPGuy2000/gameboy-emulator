@@ -1,4 +1,5 @@
 #include "cartridge.h"
+#include "memory.h"
 
 static uint8_t *rom;
 static uint8_t *bank0;
@@ -21,13 +22,13 @@ uint8_t mbc_read(uint16_t address) {
     case 0x01:
     case 0x02:
     case 0x03: {
-        if (address <= 0x3FFF) {
+        if (address <= ROM_BANK_0_END) {
             // Bank 0
             return bank0[address];
-        } else if (address <= 0x7FFF) {
+        } else if (address <= ROM_BANK_N_END) {
             // Bank n
             return bankn[address - 0x4000];
-        } else if (address >= 0xA000 && address <= 0xBFFF) {
+        } else if (address >= EXTERNAL_RAM_START && address <= EXTERNAL_RAM_END) {
             // External RAM
             if (!mbc.mbc_data.MBC1.ram_enabled || num_ram_banks == 0)
                 return 0xFF;
@@ -99,7 +100,7 @@ void mbc_write(uint16_t address, uint8_t value) {
     }
 }
 
-void load_cartridge(FILE *romfp) {
+void cartridge_load(FILE *romfp) {
     // Initialize and ROM
     if (romfp == NULL) {
         printf("ERROR: Game ROM could not be opened.");

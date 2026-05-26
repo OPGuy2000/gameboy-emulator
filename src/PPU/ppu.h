@@ -1,17 +1,12 @@
 #pragma once
 
-#ifndef PPU_H
-#define PPU_H
-
-#include "../memory.h"
 #include <SDL2/SDL.h>
+#include <stdio.h>
 
-// Screen dimensions
-#define SCREEN_WIDTH 160
-#define SCREEN_HEIGHT 144
+// Scaled screen dimensions
+#define SCREEN_WIDTH 160 * 4
+#define SCREEN_HEIGHT 144 * 4
 
-void tick(uint8_t cycles);
 uint8_t get_mode();
-void init_ppu();
-
-#endif
+void ppu_init(uint8_t (*mem_read_fp)(uint16_t), void (*mem_write_fp)(uint16_t, uint8_t));
+void tick(uint8_t cycles);
