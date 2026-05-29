@@ -24,7 +24,7 @@ static uint8_t oam_index = 0;   // Index for OAM search results
 static uint8_t mode;          // Current PPU mode (0-3)
 static uint16_t scanline_dot; // Counts dots for timing
 
-static uint8_t win_counter; // Window internal counter
+static uint8_t win_y; // Window internal counter
 
 static uint8_t (*mem_read)(uint16_t);
 static void (*mem_write)(uint16_t, uint8_t);
@@ -103,7 +103,7 @@ void tick(uint8_t dots) {
     if (!lcdc_enabled) {
         mode = 2; // Reset PPU while off
         scanline_dot = 0;
-        win_counter = 0;
+        win_y = 0;
         return;
     }
     if (scanline_dot == 0) {
@@ -142,7 +142,7 @@ void tick(uint8_t dots) {
                 // Display current framebuffer
                 present_frame();
 
-                win_counter = 0;
+                win_y = 0;
                 set_mode(2); // Start OAM Search for the next frame
             }
             tick(diff); // Process remaining dots
@@ -196,51 +196,57 @@ void tick(uint8_t dots) {
                     bg_and_window_tile_data_select = lcdc & 0x10, bg_tile_map_select = lcdc & 0x08,
                     obj_enabled = lcdc & 0x02, bg_and_window_enabled = lcdc & 0x01;
             uint8_t ly = mem_read(LY_ADDRESS);
-            uint8_t wy = mem_read(WY_ADDRESS);
-            uint8_t wx = mem_read(WX_ADDRESS);
 
             if (bg_and_window_enabled) {
                 uint8_t bgp = mem_read(BGP_ADDRESS);
 
                 // Window Rendering
-                if (window_enabled && ly >= wy && wx <= 166 && win_counter <= 143) {
-                    uint8_t y = win_counter;
+                if (window_enabled && win_y <= 143) {
                     uint16_t win_map = window_tile_map_select ? 0x9C00 : 0x9800;
-                    if (wx < 7)
-                        wx = 7;
+                    uint8_t wy = mem_read(WY_ADDRESS);
+                    uint8_t wx = mem_read(WX_ADDRESS);
 
-                    uint8_t x = wx - 7;
-                    while (x < 160) {
-                        uint8_t win_x = x - (wx - 7);
-                        uint8_t tile_id = mem_read(win_map + ((y / 8) * 32) + (win_x / 8));
+                    if (ly >= wy && wx <= 166) {
+                        if (wx < 7)
+                            wx = 7;
 
-                        uint16_t tile_addr;
-                        if (bg_and_window_tile_data_select) {
-                            tile_addr = 0x8000 + tile_id * 16;
-                        } else {
-                            tile_addr = 0x9000 + ((int8_t)tile_id * 16);
-                        }
+                        uint8_t num_tiles = (159 - (wx - 7)) / 8 + 1;
+                        for (int tile = 0; tile < num_tiles; tile++) {
+                            // Calculate x (first tile may have offset);
+                            uint8_t x = (tile == 0) ? (wx - 7) : (((wx - 7) / 8 + tile) * 8);
 
-                        uint32_t row_colors[8];
-                        fill_row_colors(row_colors, tile_addr + (y % 8) * 2, bgp);
+                            // Calculate tile ID relative to WX
+                            uint8_t tile_id = mem_read(win_map + ((win_y / 8) * 32) + tile);
 
-                        if (x % 8 == 0) { // For rest of the tiles
-                            for (int i = 0; i < 8; i++) {
-                                update_framebuffer(row_colors[i], x + i, ly);
+                            uint16_t tile_addr;
+                            if (bg_and_window_tile_data_select) {
+                                tile_addr = 0x8000 + tile_id * 16;
+                            } else {
+                                tile_addr = 0x9000 + ((int8_t)tile_id * 16);
                             }
-                            x += 8;
-                        } else { // For first tile, which may be offset
-                            for (int i = (x % 8); i < 8; i++) {
-                                update_framebuffer(row_colors[i], x + i, ly);
+
+                            uint32_t row_colors[8];
+                            fill_row_colors(row_colors, tile_addr + (win_y % 8) * 2, bgp);
+
+                            if (tile == 0) { // For first tile (offset)
+                                for (int i = 0; i < (8 - (x % 8)); i++) {
+                                    update_framebuffer(row_colors[i], x + i, ly);
+                                }
+                                x += 8 - (x % 8);
+                            } else { // For rest of the tiles
+                                for (int i = 0; i < 8; i++) {
+                                    update_framebuffer(row_colors[i], x + i, ly);
+                                }
+                                x += 8;
                             }
-                            x += 8 - (x % 8);
                         }
+                        win_y++;
                     }
-
-                    win_counter++;
                 }
 
                 // Background Rendering
+                uint8_t scy = mem_read(SCY_ADDRESS);
+                uint8_t scx = mem_read(SCX_ADDRESS);
             }
 
             // Sprite Rendering
@@ -271,5 +277,5 @@ void ppu_init(uint8_t (*mem_read_fp)(uint16_t), void (*mem_write_fp)(uint16_t, u
     mode = 1;
     oam_index = 0;
     scanline_dot = 0;
-    win_counter = 0;
+    win_y = 0;
 }

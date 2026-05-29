@@ -47,8 +47,8 @@ void test_window() {
     mem_write(0xFF40, 0x91 | 0x40 | 0x20); // LCDC
 
     // Set window position (top left of screen)
-    mem_write(0xFF4A, 0x00); // WY = 0
-    mem_write(0xFF4B, 0x07); // WX = 7 (x = 0)
+    mem_write(0xFF4A, 0x08); // WY = 0
+    mem_write(0xFF4B, 0x10); // WX = 7 (x = 0)
 
     // Set palette (all 4 colors)
     mem_write(0xFF47, 0xE4); // BGP: 11 10 01 00
