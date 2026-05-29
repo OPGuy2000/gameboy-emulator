@@ -5,7 +5,7 @@ static uint8_t *memory;
 uint8_t mem_read(uint16_t address) {
     if (address <= ROM_BANK_N_END ||
         (address >= EXTERNAL_RAM_START && address <= EXTERNAL_RAM_END)) {
-        printf("Error: Memory read out of bounds access.");
+        printf("Error: Memory read out of bounds access. (Address: 0x%04X)\n", address);
         return 0xFF;
     }
     // Echo RAM redirection
@@ -19,7 +19,7 @@ uint8_t mem_read(uint16_t address) {
 void mem_write(uint16_t address, uint8_t value) {
     if (address <= ROM_BANK_N_END ||
         (address >= EXTERNAL_RAM_START && address <= EXTERNAL_RAM_END)) {
-        printf("Error: Memory write out of bounds access.");
+        printf("Error: Memory write out of bounds access.\n");
         return;
     }
     // Echo RAM redirection
@@ -31,7 +31,7 @@ void mem_write(uint16_t address, uint8_t value) {
 }
 
 void mem_init() {
-    memory = calloc(0, MEMORY_SIZE);
+    memory = calloc(1, MEMORY_SIZE);
 
     // Initialize Boot Memory
     mem_write(0xFF00, 0xCF); // P1/JOYP
@@ -67,7 +67,7 @@ void mem_init() {
     mem_write(0xFF41, 0x85); // STAT
     mem_write(0xFF42, 0x00); // SCY
     mem_write(0xFF43, 0x00); // SCX
-    mem_write(0xFF44, 0x00); // LY
+    mem_write(0xFF44, 0x90); // LY
     mem_write(0xFF45, 0x00); // LYC
     mem_write(0xFF46, 0xFF); // DMA
     mem_write(0xFF47, 0xFC); // BGP

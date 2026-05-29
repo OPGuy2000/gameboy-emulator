@@ -1,4 +1,5 @@
 #include "ppu.h"
+#include "window.h"
 
 // Define addresses for PPU needed I/O registers
 const uint16_t LCDC_ADDRESS = 0xFF40,             // LCD Control Register
@@ -20,11 +21,6 @@ struct OAMEntry {
 struct OAMEntry oam_buffer[10]; // Buffer for OAM search results (up to 10 sprites per line)
 static uint8_t oam_index = 0;   // Index for OAM search results
 
-static SDL_Window *window;     // Pointer to the SDL window
-static SDL_Renderer *renderer; // Pointer to SDL renderer
-static SDL_Texture *texture;
-static uint32_t framebuffer[160 * 144];
-
 static uint8_t mode;          // Current PPU mode (0-3)
 static uint16_t scanline_dot; // Counts dots for timing
 
@@ -33,31 +29,18 @@ static uint8_t win_counter; // Window internal counter
 static uint8_t (*mem_read)(uint16_t);
 static void (*mem_write)(uint16_t, uint8_t);
 
-static void present_frame(uint32_t *framebuffer) {
-    void *pixels;
-    int pitch;
-
-    SDL_LockTexture(texture, NULL, &pixels, &pitch);
-    memcpy(pixels, framebuffer, 160 * 144 * sizeof(uint32_t));
-    SDL_UnlockTexture(texture);
-
-    SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, NULL, NULL);
-    SDL_RenderPresent(renderer);
-}
-
-static void fill_row_colors(uint32_t colors[8], uint8_t data_address, uint8_t palette) {
+static void fill_row_colors(uint32_t colors[8], uint16_t data_address, uint8_t palette) {
     uint8_t byte1 = mem_read(data_address);
     uint8_t byte2 = mem_read(data_address + 1);
 
     for (int pixel = 0; pixel < 8; pixel++) {
-        uint8_t color_id = (((byte2 >> (pixel - 7)) & 0x01) << 1) + ((byte1 >> (pixel - 7)) & 0x01);
+        uint8_t color_id = (((byte2 >> (7 - pixel)) & 0x01) << 1) + ((byte1 >> (7 - pixel)) & 0x01);
 
         // Each color is represented by 2 bits in the palette
         uint8_t color_bits = (palette >> (color_id * 2)) & 0x03;
         switch (color_bits) {
         case 0:
-            colors[pixel] = 0xFFFFFFAA; // White
+            colors[pixel] = 0xFFFFFFFF; // White
             break;
         case 1:
             colors[pixel] = 0xAAAAAAFF; // Light Gray
@@ -157,7 +140,7 @@ void tick(uint8_t dots) {
             uint8_t ly = increment_ly();
             if (ly == 0) {
                 // Display current framebuffer
-                present_frame(framebuffer);
+                present_frame();
 
                 win_counter = 0;
                 set_mode(2); // Start OAM Search for the next frame
@@ -176,10 +159,10 @@ void tick(uint8_t dots) {
         uint8_t ly = mem_read(LY_ADDRESS);
         for (int i = 0; i < entries_to_read && oam_index < 10; i++) {
             // Perform OAM search logic here
-            uint8_t y_pos = mem_read(0xFE00 + oam_index * 4);
-            uint8_t x_pos = mem_read(0xFE00 + oam_index * 4 + 1);
-            uint8_t tile_index = mem_read(0xFE00 + oam_index * 4 + 2);
-            uint8_t attributes = mem_read(0xFE00 + oam_index * 4 + 3);
+            uint8_t y_pos = mem_read(OAM_START + oam_index * 4);
+            uint8_t x_pos = mem_read(OAM_START + oam_index * 4 + 1);
+            uint8_t tile_index = mem_read(OAM_START + oam_index * 4 + 2);
+            uint8_t attributes = mem_read(OAM_START + oam_index * 4 + 3);
 
             uint8_t sprite_y = y_pos - 16;
             uint8_t sprite_height = obj_size ? 16 : 8;
@@ -241,14 +224,14 @@ void tick(uint8_t dots) {
                         uint32_t row_colors[8];
                         fill_row_colors(row_colors, tile_addr + (y % 8) * 2, bgp);
 
-                        if (x % 8 == 0) {
+                        if (x % 8 == 0) { // For rest of the tiles
                             for (int i = 0; i < 8; i++) {
-                                framebuffer[ly * 160 + x + i] = row_colors[i];
+                                update_framebuffer(row_colors[i], x + i, ly);
                             }
                             x += 8;
-                        } else {
+                        } else { // For first tile, which may be offset
                             for (int i = (x % 8); i < 8; i++) {
-                                framebuffer[ly * 160 + x + i] = row_colors[i];
+                                update_framebuffer(row_colors[i], x + i, ly);
                             }
                             x += 8 - (x % 8);
                         }
@@ -281,39 +264,8 @@ void ppu_init(uint8_t (*mem_read_fp)(uint16_t), void (*mem_write_fp)(uint16_t, u
     mem_read = mem_read_fp;
     mem_write = mem_write_fp;
 
-    // Initialize SDL
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        printf("SDL Init Error: %s\n", SDL_GetError());
-        return;
-    }
-
-    // Create window
-    window = SDL_CreateWindow("SDL2 Pixel Example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                              SCREEN_WIDTH, SCREEN_HEIGHT, 0);
-    if (!window) {
-        printf("Window Error: %s\n", SDL_GetError());
-        SDL_Quit();
-        return;
-    }
-
-    // Create renderer
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (!renderer) {
-        printf("Renderer Error: %s\n", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return;
-    }
-    // Create texture at native GB resolution
-    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING,
-                                160, 144);
-    if (!texture) {
-        printf("Texture Error: %s\n", SDL_GetError());
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return;
-    }
+    // Intialize window
+    window_init();
 
     // Initialize PPU boot settings
     mode = 1;

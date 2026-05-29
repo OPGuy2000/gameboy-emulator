@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "SDL2/SDL.h"
+
 #include "PPU/ppu.h"
 #include "cartridge.h"
 #include "memory.h"
@@ -39,6 +41,37 @@ void bus_write(uint16_t address, uint8_t value) {
         mem_write(address, value);
     }
 }
+void test_window() {
+    // Set up LCDC: LCD on, window tile map at 0x9C00, window on,
+    // tile data at 0x8000, BG on
+    mem_write(0xFF40, 0x91 | 0x40 | 0x20); // LCDC
+
+    // Set window position (top left of screen)
+    mem_write(0xFF4A, 0x00); // WY = 0
+    mem_write(0xFF4B, 0x07); // WX = 7 (x = 0)
+
+    // Set palette (all 4 colors)
+    mem_write(0xFF47, 0xE4); // BGP: 11 10 01 00
+
+    // Write two tile patterns to VRAM at 0x8000
+    // Tile 0: solid white (color 0)
+    for (int i = 0; i < 16; i++) {
+        mem_write(0x8000 + i, 0x00);
+    }
+
+    // Tile 1: solid black (color 3)
+    for (int i = 0; i < 16; i++) {
+        mem_write(0x8010 + i, 0xFF);
+    }
+
+    // Fill window tile map at 0x9C00 with checkerboard pattern
+    for (int row = 0; row < 18; row++) {
+        for (int col = 0; col < 20; col++) {
+            uint8_t tile = (row + col) % 2; // alternates 0 and 1
+            mem_write(0x9C00 + row * 32 + col, tile);
+        }
+    }
+}
 
 void gb_init(FILE *rom) {
     // Initialize memory
@@ -47,8 +80,32 @@ void gb_init(FILE *rom) {
     // Load game ROM
     cartridge_load(rom);
 
+    test_window();
+
     // Initialize PPU
     ppu_init(mem_read, mem_write);
+
+    printf("LCDC: %b\n", mem_read(0xFF40));
+    fflush(stdout);
+
+    for (int i = 0; i < 80224; i += 4) {
+        tick(4);
+    }
+
+    while (true) {
+
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                exit(0);
+            }
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE) {
+                    exit(0);
+                }
+            }
+        }
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -56,10 +113,14 @@ int main(int argc, char *argv[]) {
     if (argc > 1) {
         rom = fopen(argv[1], "rb");
     } else {
-        char fileName[100];
+        char filePath[100] = "ROMS/";
+        char fileName[80];
+
         printf("Enter file name of desired ROM: ");
         scanf("%s", fileName);
-        rom = fopen(fileName, "rb");
+        strcat(filePath, fileName);
+
+        rom = fopen(filePath, "rb");
     }
     gb_init(rom);
 
